@@ -69,7 +69,7 @@ export default function App() {
         {/* HOLDINGS */}
         <section className="panel">
           <div className="panel-label">Holdings</div>
-          <table className="table">
+          <div className="table-scroll"><table className="table">
             <thead>
               <tr>
                 <th>Symbol</th>
@@ -103,13 +103,13 @@ export default function App() {
                 )
               })}
             </tbody>
-          </table>
+          </table></div>
         </section>
 
         {/* TRANSACTIONS */}
         <section className="panel">
           <div className="panel-label">Transaction History</div>
-          <table className="table">
+          <div className="table-scroll"><table className="table">
             <thead>
               <tr>
                 <th>Date</th>
@@ -135,7 +135,7 @@ export default function App() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </section>
 
       </main>
