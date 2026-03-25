@@ -1,4 +1,7 @@
+// Timestamp will be firebase/firestore.Timestamp once Firebase is wired up.
+// For now we alias it to Date so mock data works without a live Firebase connection.
 import { Timestamp } from 'firebase/firestore'
+export type { Timestamp }
 
 // ---------------------------------------------------------------------------
 // Firestore collection layout

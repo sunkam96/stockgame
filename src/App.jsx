@@ -1,33 +1,24 @@
 import './App.css'
+import { MOCK_USER, MOCK_PORTFOLIO, MOCK_TRANSACTIONS } from './mockData'
 
-const HOLDINGS = [
-  { symbol: 'AAPL', name: 'Apple Inc.',      shares: 10, avgCost: 198.20, price: 213.50 },
-  { symbol: 'NVDA', name: 'NVIDIA Corp.',     shares:  2, avgCost: 820.00, price: 875.20 },
-  { symbol: 'TSLA', name: 'Tesla Inc.',       shares:  8, avgCost: 195.00, price: 182.40 },
-  { symbol: 'MSFT', name: 'Microsoft Corp.', shares:  4, avgCost: 400.00, price: 407.20 },
-]
+// Placeholder prices — will be replaced by live Yahoo Finance data later
+const PRICES = { AAPL: 213.50, NVDA: 875.20, TSLA: 182.40, MSFT: 407.20 }
 
-const TRANSACTIONS = [
-  { id: 1, date: '3/25/2026, 10:14 AM', type: 'buy',  symbol: 'MSFT', shares: 4, price: 400.00 },
-  { id: 2, date: '3/24/2026,  2:02 PM', type: 'sell', symbol: 'TSLA', shares: 2, price: 201.30 },
-  { id: 3, date: '3/24/2026,  9:47 AM', type: 'buy',  symbol: 'TSLA', shares: 10, price: 195.00 },
-  { id: 4, date: '3/22/2026, 11:30 AM', type: 'buy',  symbol: 'NVDA', shares:  2, price: 820.00 },
-  { id: 5, date: '3/20/2026,  3:55 PM', type: 'buy',  symbol: 'AAPL', shares: 10, price: 198.20 },
-]
-
-function pct(price, avgCost) {
-  return ((price - avgCost) / avgCost) * 100
+function pct(current, avgCost) {
+  return ((current - avgCost) / avgCost) * 100
 }
 
-function fmt(n, opts = {}) {
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2, ...opts })
+function fmt(n) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export default function App() {
-  const invested   = HOLDINGS.reduce((s, h) => s + h.shares * h.avgCost, 0)
-  const mktValue   = HOLDINGS.reduce((s, h) => s + h.shares * h.price,   0)
-  const cash       = 10000 - invested
-  const totalPL    = mktValue - invested
+  const { name, cash, holdings } = MOCK_PORTFOLIO
+  const holdingsList = Object.values(holdings)
+
+  const mktValue  = holdingsList.reduce((s, h) => s + h.shares * (PRICES[h.symbol] ?? h.avgCost), 0)
+  const costBasis = holdingsList.reduce((s, h) => s + h.shares * h.avgCost, 0)
+  const totalPL   = mktValue - costBasis
   const totalValue = mktValue + cash
 
   return (
@@ -37,7 +28,7 @@ export default function App() {
       <header className="topbar">
         <span className="topbar-logo">📈 Sudershan Stock Game</span>
         <div className="topbar-right">
-          <span className="topbar-user">Sai</span>
+          <span className="topbar-user">{MOCK_USER.displayName}</span>
           <span className="topbar-cash">💵 ${fmt(cash)}</span>
         </div>
       </header>
@@ -48,7 +39,7 @@ export default function App() {
         <div className="portfolio-header">
           <div>
             <p className="portfolio-eyebrow">Portfolio</p>
-            <h1 className="portfolio-name">My Portfolio</h1>
+            <h1 className="portfolio-name">{name}</h1>
           </div>
           <button className="btn btn-primary">+ New Trade</button>
         </div>
@@ -91,26 +82,23 @@ export default function App() {
               </tr>
             </thead>
             <tbody>
-              {HOLDINGS.map(h => {
-                const pl  = (h.price - h.avgCost) * h.shares
-                const ret = pct(h.price, h.avgCost)
-                const up  = pl >= 0
+              {holdingsList.map(h => {
+                const price = PRICES[h.symbol] ?? h.avgCost
+                const pl    = (price - h.avgCost) * h.shares
+                const ret   = pct(price, h.avgCost)
+                const up    = pl >= 0
                 return (
                   <tr key={h.symbol}>
                     <td>
                       <span className="sym">{h.symbol}</span>
-                      <span className="sym-name">{h.name}</span>
+                      <span className="sym-name">{h.companyName}</span>
                     </td>
                     <td>{h.shares}</td>
                     <td>${fmt(h.avgCost)}</td>
-                    <td>${fmt(h.price)}</td>
-                    <td>${fmt(h.shares * h.price)}</td>
-                    <td className={up ? 'up' : 'down'}>
-                      {up ? '+' : ''}${fmt(pl)}
-                    </td>
-                    <td className={up ? 'up' : 'down'}>
-                      {up ? '+' : ''}{fmt(ret)}%
-                    </td>
+                    <td>${fmt(price)}</td>
+                    <td>${fmt(h.shares * price)}</td>
+                    <td className={up ? 'up' : 'down'}>{up ? '+' : ''}${fmt(pl)}</td>
+                    <td className={up ? 'up' : 'down'}>{up ? '+' : ''}{fmt(ret)}%</td>
                   </tr>
                 )
               })}
@@ -133,14 +121,17 @@ export default function App() {
               </tr>
             </thead>
             <tbody>
-              {TRANSACTIONS.map(tx => (
-                <tr key={tx.id}>
-                  <td className="muted">{tx.date}</td>
+              {MOCK_TRANSACTIONS.map(tx => (
+                <tr key={tx.transactionId}>
+                  <td className="muted">{tx.executedAt.toDate().toLocaleString()}</td>
                   <td><span className={`tag tag-${tx.type}`}>{tx.type.toUpperCase()}</span></td>
-                  <td><span className="sym">{tx.symbol}</span></td>
+                  <td>
+                    <span className="sym">{tx.symbol}</span>
+                    <span className="sym-name">{tx.companyName}</span>
+                  </td>
                   <td>{tx.shares}</td>
-                  <td>${fmt(tx.price)}</td>
-                  <td>${fmt(tx.shares * tx.price)}</td>
+                  <td>${fmt(tx.pricePerShare)}</td>
+                  <td>${fmt(tx.total)}</td>
                 </tr>
               ))}
             </tbody>
