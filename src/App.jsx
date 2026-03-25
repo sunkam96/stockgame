@@ -35,7 +35,7 @@ export default function App() {
 
       {/* TOP NAV */}
       <header className="topbar">
-        <span className="topbar-logo">📈 Stock Market Game</span>
+        <span className="topbar-logo">📈 Sudershan Stock Game</span>
         <div className="topbar-right">
           <span className="topbar-user">Sai</span>
           <span className="topbar-cash">💵 ${fmt(cash)}</span>
@@ -68,7 +68,7 @@ export default function App() {
             <div className="stat-v">${fmt(cash)}</div>
           </div>
           <div className="stat">
-            <div className="stat-k">Total P&amp;L</div>
+            <div className="stat-k">Return</div>
             <div className={`stat-v ${totalPL >= 0 ? 'up' : 'down'}`}>
               {totalPL >= 0 ? '+' : ''}${fmt(totalPL)}
             </div>
@@ -86,8 +86,8 @@ export default function App() {
                 <th>Avg Cost</th>
                 <th>Price</th>
                 <th>Mkt Value</th>
-                <th>P&amp;L</th>
                 <th>Return</th>
+                <th>Return %</th>
               </tr>
             </thead>
             <tbody>
