@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { DJIA_30 } from '../constants'
-import { getPrice } from '../api/prices'
+import { fetchPrice } from '../api/prices'
 
 function fmt(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -15,11 +15,14 @@ function fmt(n) {
  * }} props
  */
 export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
-  const [type, setType]       = useState('buy')
-  const [symbol, setSymbol]   = useState('')
-  const [search, setSearch]   = useState('')
-  const [shares, setShares]   = useState('')
-  const [error, setError]     = useState(null)
+  const [type, setType]         = useState('buy')
+  const [symbol, setSymbol]     = useState('')
+  const [search, setSearch]     = useState('')
+  const [shares, setShares]     = useState('')
+  const [error, setError]       = useState(null)
+  const [price, setPrice]       = useState(null)
+  const [priceLoading, setPriceLoading] = useState(false)
+  const [priceError, setPriceError]     = useState(null)
 
   const filtered = useMemo(() =>
     DJIA_30.filter(s =>
@@ -27,18 +30,36 @@ export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
       s.companyName.toLowerCase().includes(search.toLowerCase())
     ), [search])
 
-  const selected   = DJIA_30.find(s => s.symbol === symbol) ?? null
-  const price      = selected ? getPrice(selected.symbol) : null
-  const sharesNum  = parseInt(shares, 10)
+  const selected = DJIA_30.find(s => s.symbol === symbol) ?? null
+
+  // Fetch price whenever a stock is selected
+  useEffect(() => {
+    if (!selected) { setPrice(null); return }
+
+    let cancelled = false
+    setPriceLoading(true)
+    setPriceError(null)
+    setPrice(null)
+
+    fetchPrice(selected.symbol)
+      .then(p => { if (!cancelled) { setPrice(p); setPriceLoading(false) } })
+      .catch(e => { if (!cancelled) { setPriceError(e.message); setPriceLoading(false) } })
+
+    return () => { cancelled = true }
+  }, [selected?.symbol])
+
+  const sharesNum   = parseInt(shares, 10)
   const validShares = !isNaN(sharesNum) && sharesNum > 0
-  const total      = validShares && price ? sharesNum * price : 0
+  const total       = validShares && price ? sharesNum * price : 0
 
   const maxSellShares = symbol && holdings[symbol] ? holdings[symbol].shares : 0
-  const cashAfter  = type === 'buy' ? cash - total : cash + total
+  const cashAfter     = type === 'buy' ? cash - total : cash + total
 
   const canSubmit =
     selected &&
     validShares &&
+    price !== null &&
+    !priceLoading &&
     (type === 'buy' ? total <= cash : sharesNum <= maxSellShares)
 
   function handleConfirm() {
@@ -124,11 +145,15 @@ export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
         </div>
 
         {/* SUMMARY */}
-        {selected && price && (
+        {selected && (
           <div className="trade-summary">
             <div className="summary-row">
               <span>Price per share</span>
-              <span>${fmt(price)}</span>
+              <span>
+                {priceLoading && <span className="muted">Loading…</span>}
+                {priceError  && <span className="down">Error</span>}
+                {price !== null && `$${fmt(price)}`}
+              </span>
             </div>
             <div className="summary-row">
               <span>Estimated {type === 'buy' ? 'cost' : 'proceeds'}</span>
@@ -141,6 +166,9 @@ export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
           </div>
         )}
 
+        {priceError && (
+          <p className="trade-error">Could not fetch price: {priceError}</p>
+        )}
         {error && <p className="trade-error">{error}</p>}
 
         <div className="modal-actions">

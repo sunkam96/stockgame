@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Timestamp } from 'firebase/firestore'
 import './App.css'
 import { MOCK_USER, MOCK_PORTFOLIO, MOCK_TRANSACTIONS } from './mockData'
 import TradeModal from './components/TradeModal'
+import { fetchPrices } from './api/prices'
 
 function fmt(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -18,15 +19,30 @@ export default function App() {
   const [portfolio, setPortfolio]       = useState(MOCK_PORTFOLIO)
   const [transactions, setTransactions] = useState(MOCK_TRANSACTIONS)
   const [showModal, setShowModal]       = useState(false)
+  const [livePrices, setLivePrices]     = useState({})   // symbol → number
 
-  // ── Derived totals ────────────────────────────────────────
+  // ── Fetch live prices for all current holdings ─────────
+  useEffect(() => {
+    const symbols = Object.keys(portfolio.holdings)
+    if (symbols.length === 0) return
+
+    fetchPrices(symbols).then(prices => {
+      setLivePrices(prev => ({ ...prev, ...prices }))
+    })
+  }, [portfolio.holdings])
+
+  // ── Derived totals ─────────────────────────────────────
   const holdingsList = Object.values(portfolio.holdings)
-  const mktValue  = holdingsList.reduce((s, h) => s + h.shares * h.avgCost, 0) // avgCost until live prices in chunk 2
-  const costBasis = holdingsList.reduce((s, h) => s + h.shares * h.avgCost, 0)
-  const totalPL   = mktValue - costBasis
+
+  const mktValue = holdingsList.reduce((s, h) => {
+    const p = livePrices[h.symbol] ?? h.avgCost   // fall back to cost until price loads
+    return s + h.shares * p
+  }, 0)
+  const costBasis  = holdingsList.reduce((s, h) => s + h.shares * h.avgCost, 0)
+  const totalPL    = mktValue - costBasis
   const totalValue = mktValue + portfolio.cash
 
-  // ── Trade execution ───────────────────────────────────────
+  // ── Trade execution ────────────────────────────────────
   /**
    * Validates and applies a trade. Returns an error string on failure,
    * null on success.
@@ -43,7 +59,7 @@ export default function App() {
       }
 
       setPortfolio(prev => {
-        const existing = prev.holdings[symbol]
+        const existing  = prev.holdings[symbol]
         const newShares  = (existing?.shares ?? 0) + shares
         const newAvgCost = existing
           ? (existing.shares * existing.avgCost + total) / newShares
@@ -58,6 +74,9 @@ export default function App() {
           },
         }
       })
+
+      // Seed the live price immediately so the table shows it right away
+      setLivePrices(prev => ({ ...prev, [symbol]: pricePerShare }))
     } else {
       const holding = portfolio.holdings[symbol]
       if (!holding || holding.shares < shares) {
@@ -65,7 +84,7 @@ export default function App() {
       }
 
       setPortfolio(prev => {
-        const remaining = prev.holdings[symbol].shares - shares
+        const remaining  = prev.holdings[symbol].shares - shares
         const newHoldings = { ...prev.holdings }
         if (remaining === 0) {
           delete newHoldings[symbol]
@@ -162,10 +181,11 @@ export default function App() {
                   </thead>
                   <tbody>
                     {holdingsList.map(h => {
-                      const price = h.avgCost  // chunk 2: replace with live price
-                      const pl    = (price - h.avgCost) * h.shares
-                      const ret   = pct(price, h.avgCost)
-                      const up    = pl >= 0
+                      const livePrice = livePrices[h.symbol]
+                      const hasPrice  = livePrice !== undefined
+                      const pl  = hasPrice ? (livePrice - h.avgCost) * h.shares : 0
+                      const ret = hasPrice ? pct(livePrice, h.avgCost) : 0
+                      const up  = pl >= 0
                       return (
                         <tr key={h.symbol}>
                           <td>
@@ -174,10 +194,14 @@ export default function App() {
                           </td>
                           <td>{h.shares}</td>
                           <td>${fmt(h.avgCost)}</td>
-                          <td className="muted">—</td>
-                          <td className="muted">—</td>
-                          <td className={up ? 'up' : 'down'}>{up ? '+' : ''}${fmt(pl)}</td>
-                          <td className={up ? 'up' : 'down'}>{up ? '+' : ''}{fmt(ret)}%</td>
+                          <td>{hasPrice ? `$${fmt(livePrice)}` : <span className="muted">…</span>}</td>
+                          <td>{hasPrice ? `$${fmt(livePrice * h.shares)}` : <span className="muted">…</span>}</td>
+                          <td className={hasPrice ? (up ? 'up' : 'down') : 'muted'}>
+                            {hasPrice ? `${up ? '+' : ''}$${fmt(pl)}` : '—'}
+                          </td>
+                          <td className={hasPrice ? (up ? 'up' : 'down') : 'muted'}>
+                            {hasPrice ? `${up ? '+' : ''}${fmt(ret)}%` : '—'}
+                          </td>
                         </tr>
                       )
                     })}
