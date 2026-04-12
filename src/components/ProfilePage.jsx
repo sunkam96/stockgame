@@ -287,9 +287,6 @@ export default function ProfilePage() {
       <header className="topbar">
         <span className="topbar-logo">📈 Stock Market Game</span>
         <div className="topbar-right">
-          {portfolios.length > 0 && (
-            <Link to={`/portfolio/${portfolios[0].portfolioId}`} className="btn-signout">← Portfolio</Link>
-          )}
         </div>
       </header>
       <main className="main">

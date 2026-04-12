@@ -23,6 +23,7 @@ function Portfolio() {
 
   const { portfolioId }                 = useParams()
   const [user, setUser]                 = useState(undefined) // undefined = checking, null = signed out
+  const [menuOpen, setMenuOpen]         = useState(false)
   const [portfolio, setPortfolio]       = useState(null)
   const [transactions, setTransactions] = useState([])
   const [showModal, setShowModal]       = useState(false)
@@ -197,9 +198,31 @@ function Portfolio() {
       <header className="topbar">
         <span className="topbar-logo">📈 Stock Market Game</span>
         <div className="topbar-right">
-          <Link to="/profile" className="topbar-user">{user.displayName}</Link>
           <span className="topbar-cash">💵 ${fmt(portfolio.cash)}</span>
-          <button className="btn-signout" onClick={() => signOut(auth)}>Sign out</button>
+          <div className="user-menu-wrap">
+            <button
+              className="topbar-user"
+              onClick={() => setMenuOpen(o => !o)}
+            >
+              {user.displayName} ▾
+            </button>
+            {menuOpen && (
+              <>
+                <div className="user-menu-backdrop" onClick={() => setMenuOpen(false)} />
+                <div className="user-menu">
+                  <Link to="/profile" className="user-menu-item" onClick={() => setMenuOpen(false)}>
+                    Profile
+                  </Link>
+                  <button
+                    className="user-menu-item user-menu-item--danger"
+                    onClick={() => { setMenuOpen(false); signOut(auth) }}
+                  >
+                    Log out
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 

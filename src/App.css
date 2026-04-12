@@ -57,7 +57,53 @@ body {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
 }
+.topbar-user:hover { color: var(--text); }
+
+.user-menu-wrap {
+  position: relative;
+}
+
+.user-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+
+.user-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.10);
+  min-width: 140px;
+  z-index: 100;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.user-menu-item {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+.user-menu-item:hover { background: var(--bg); }
+.user-menu-item--danger { color: var(--down); }
 
 .topbar-cash {
   background: #f0fdf4;
@@ -449,7 +495,7 @@ body {
   .topbar-logo { font-size: 0.9rem; }
 
   /* hide the username, keep just the cash pill */
-  .topbar-user { display: none; }
+  .topbar-user { font-size: 0.78rem; }
 
   .topbar-cash { font-size: 0.8rem; padding: 5px 10px; }
 
