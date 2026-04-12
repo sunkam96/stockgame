@@ -3,9 +3,9 @@ import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { Timestamp } from 'firebase/firestore'
 import './App.css'
 import { auth } from './firebase'
-import { getOrCreatePortfolio, savePortfolio, getTransactions, addTransaction } from './api/firestore'
+import { getOrCreateProfile, getPortfolio, savePortfolio, getTransactions, addTransaction } from './api/firestore'
 import { fetchPrices, fetchPrice } from './api/prices'
-import { Routes, Route, Link } from 'react-router-dom'
+import { Routes, Route, Link, useNavigate, useParams } from 'react-router-dom'
 import TradeModal from './components/TradeModal'
 import SignIn from './components/SignIn'
 import Admin from './components/Admin'
@@ -21,6 +21,7 @@ function pct(current, avgCost) {
 
 function Portfolio() {
 
+  const { portfolioId }                 = useParams()
   const [user, setUser]                 = useState(undefined) // undefined = checking, null = signed out
   const [portfolio, setPortfolio]       = useState(null)
   const [transactions, setTransactions] = useState([])
@@ -29,6 +30,7 @@ function Portfolio() {
   const [livePrices, setLivePrices]     = useState({})
   const [loading, setLoading]           = useState(false)
   const [loadError, setLoadError]       = useState(null)
+  const navigate                        = useNavigate()
 
   // ── Auth state observer ────────────────────────────────────────────────────
   useEffect(() => {
@@ -38,25 +40,35 @@ function Portfolio() {
     return unsub
   }, [])
 
-  // ── Load portfolio + transactions when user is known ───────────────────────
+  // ── Load portfolio when user + portfolioId are known ──────────────────────
   useEffect(() => {
-    if (!user) return
+    if (!user || !portfolioId) return
 
     setLoading(true)
     setLoadError(null)
 
-    Promise.all([
-      getOrCreatePortfolio(user.uid, user.email, user.displayName),
-      // transactions loaded after portfolio is known — handled below
-    ])
-      .then(async ([p]) => {
-        const txs = await getTransactions(p.portfolioId)
-        setPortfolio(p)
-        setTransactions(txs)
+    async function load() {
+      // Ensure a profile document exists for this user
+      await getOrCreateProfile(user.uid, {
+        email:       user.email,
+        displayName: user.displayName,
       })
+
+      const p = await getPortfolio(portfolioId)
+      if (!p) {
+        navigate('/profile')
+        return
+      }
+
+      const txs = await getTransactions(p.portfolioId)
+      setPortfolio(p)
+      setTransactions(txs)
+    }
+
+    load()
       .catch(e => setLoadError(e.message))
       .finally(() => setLoading(false))
-  }, [user])
+  }, [user, portfolioId])
 
   // ── Fetch live prices whenever holdings change ─────────────────────────────
   useEffect(() => {
@@ -190,6 +202,7 @@ function Portfolio() {
           <button className="btn-signout" onClick={() => signOut(auth)}>Sign out</button>
         </div>
       </header>
+
 
       <main className="main">
 
@@ -353,9 +366,9 @@ function Portfolio() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/admin"   element={<Admin />} />
-      <Route path="/profile" element={<ProfilePage />} />
-      <Route path="/*"       element={<Portfolio />} />
+      <Route path="/admin"                    element={<Admin />} />
+      <Route path="/portfolio/:portfolioId"   element={<Portfolio />} />
+      <Route path="/*"                        element={<ProfilePage />} />
     </Routes>
   )
 }

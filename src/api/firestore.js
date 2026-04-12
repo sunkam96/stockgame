@@ -140,6 +140,12 @@ export async function createPortfolio(userId, name, startBalance = START_BALANCE
  * @param {string} portfolioId
  * @param {{ cash: number, holdings: Record<string, import('../data').Holding> }} update
  */
+export async function getPortfolio(portfolioId) {
+  const snap = await getDoc(doc(db, 'portfolios', portfolioId))
+  if (!snap.exists()) return null
+  return { portfolioId: snap.id, ...snap.data() }
+}
+
 export async function savePortfolio(portfolioId, { cash, holdings }) {
   await updateDoc(doc(db, 'portfolios', portfolioId), { cash, holdings })
 }

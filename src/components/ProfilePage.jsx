@@ -1,23 +1,28 @@
 import { useState, useEffect } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { auth } from '../firebase'
-import { getProfile, getOrCreateProfile, getUserPortfolios } from '../api/firestore'
+import { getProfile, getOrCreateProfile, getUserPortfolios, createPortfolio } from '../api/firestore'
 import GoogleIcon from './GoogleIcon'
 
-export default function ProfilePage() {
-  const [user, setUser]         = useState(undefined)
-  const [profile, setProfile]   = useState(undefined)   // undefined = loading, null = not found
-  const [portfolios, setPortfolios] = useState([])
-  const [creating, setCreating] = useState(false)
-  const [error, setError]       = useState(null)
+function fmt(n) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 
-  // Watch auth state
+export default function ProfilePage() {
+  const [user, setUser]               = useState(undefined)
+  const [profile, setProfile]         = useState(undefined)  // undefined=loading, null=not found
+  const [portfolios, setPortfolios]   = useState([])
+  const [creating, setCreating]       = useState(false)
+  const [creatingPortfolio, setCreatingPortfolio] = useState(false)
+  const [portfolioName, setPortfolioName]         = useState('')
+  const [error, setError]             = useState(null)
+  const navigate                      = useNavigate()
+
   useEffect(() => {
     return onAuthStateChanged(auth, u => setUser(u ?? null))
   }, [])
 
-  // Load profile once we have a user
   useEffect(() => {
     if (!user) return
     getProfile(user.uid)
@@ -25,9 +30,8 @@ export default function ProfilePage() {
       .catch(e => setError(e.message))
   }, [user])
 
-  // Load portfolios once profile is confirmed to exist
   useEffect(() => {
-    if (!user || profile === undefined || profile === null) return
+    if (!user || !profile) return
     getUserPortfolios(user.uid)
       .then(setPortfolios)
       .catch(() => {})
@@ -50,6 +54,23 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleCreatePortfolio(e) {
+    e.preventDefault()
+    if (!user || !portfolioName.trim()) return
+    setCreatingPortfolio(true)
+    setError(null)
+    try {
+      const p = await createPortfolio(user.uid, portfolioName.trim())
+      setPortfolios(prev => [...prev, p])
+      setPortfolioName('')
+      navigate(`/portfolio/${p.portfolioId}`)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setCreatingPortfolio(false)
+    }
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   function body() {
@@ -68,9 +89,9 @@ export default function ProfilePage() {
     if (profile === null) {
       return (
         <div className="panel" style={{ maxWidth: 480 }}>
-          <div className="panel-label">No account found</div>
+          <div className="panel-label">No profile found</div>
           <p className="empty" style={{ marginBottom: 16 }}>
-            Create a profile to create portfolios.
+            You don't have a profile yet. Click below to create one using your Google account details.
           </p>
           <button className="btn-google" onClick={handleCreateProfile} disabled={creating}>
             <GoogleIcon />
@@ -82,6 +103,8 @@ export default function ProfilePage() {
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 560 }}>
+
+        {/* Identity */}
         <div className="panel">
           <div className="panel-label">Identity</div>
           <table className="table">
@@ -106,11 +129,12 @@ export default function ProfilePage() {
           </table>
         </div>
 
+        {/* Portfolios */}
         <div className="panel">
           <div className="panel-label">Portfolios</div>
-          {portfolios.length === 0
-            ? <p className="empty">No portfolios yet.</p>
-            : (
+
+          {portfolios.length > 0 && (
+            <div className="table-scroll" style={{ marginBottom: 20 }}>
               <table className="table">
                 <thead>
                   <tr>
@@ -125,11 +149,11 @@ export default function ProfilePage() {
                   {portfolios.map(p => (
                     <tr key={p.portfolioId}>
                       <td>{p.name}</td>
-                      <td>${p.cash.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td>${fmt(p.cash)}</td>
                       <td>{Object.keys(p.holdings ?? {}).length}</td>
                       <td className="muted">{p.createdAt?.toDate?.().toLocaleDateString() ?? '—'}</td>
                       <td>
-                        <Link to="/" className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '0.78rem' }}>
+                        <Link to={`/portfolio/${p.portfolioId}`} className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '0.78rem' }}>
                           View
                         </Link>
                       </td>
@@ -137,9 +161,28 @@ export default function ProfilePage() {
                   ))}
                 </tbody>
               </table>
-            )
-          }
+            </div>
+          )}
+
+          {/* Create portfolio form */}
+          <form onSubmit={handleCreatePortfolio} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              className="input"
+              style={{ flex: 1 }}
+              placeholder="Portfolio name, e.g. Growth, Dividends…"
+              value={portfolioName}
+              onChange={e => setPortfolioName(e.target.value)}
+            />
+            <button
+              className="btn btn-primary"
+              type="submit"
+              disabled={creatingPortfolio || !portfolioName.trim()}
+            >
+              {creatingPortfolio ? 'Creating…' : '+ New Portfolio'}
+            </button>
+          </form>
         </div>
+
       </div>
     )
   }
@@ -149,7 +192,9 @@ export default function ProfilePage() {
       <header className="topbar">
         <span className="topbar-logo">📈 Stock Market Game</span>
         <div className="topbar-right">
-          <Link to="/" className="btn-signout">← Portfolio</Link>
+          {portfolios.length > 0 && (
+            <Link to={`/portfolio/${portfolios[0].portfolioId}`} className="btn-signout">← Portfolio</Link>
+          )}
         </div>
       </header>
       <main className="main">
