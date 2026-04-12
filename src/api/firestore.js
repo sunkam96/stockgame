@@ -23,7 +23,34 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase'
 
-const START_BALANCE = 10_000
+export const START_BALANCE      = 10_000
+export const MAX_SHORT_EXPOSURE = START_BALANCE * 2   // $20,000
+
+// ── Profile ───────────────────────────────────────────────────────────────────
+
+/**
+ * Load the profile for a user. If none exists, create one from their
+ * Firebase Auth data. Stored at users/{userId}.
+ *
+ * @param {string} userId
+ * @param {{ email: string, displayName: string }} authData
+ * @returns {Promise<import('../data').Profile>}
+ */
+export async function getOrCreateProfile(userId, { email, displayName }) {
+  const ref  = doc(db, 'users', userId)
+  const snap = await getDoc(ref)
+
+  if (snap.exists()) return { userId: snap.id, ...snap.data() }
+
+  const fresh = {
+    userId,
+    displayName: displayName ?? '',
+    email:       email ?? '',
+    createdAt:   Timestamp.now(),
+  }
+  await setDoc(ref, fresh)
+  return fresh
+}
 
 // ── Portfolio ────────────────────────────────────────────────────────────────
 
@@ -55,6 +82,41 @@ export async function getOrCreatePortfolio(userId, email, displayName) {
     createdAt:    Timestamp.now(),
   }
 
+  const newRef = doc(collection(db, 'portfolios'))
+  await setDoc(newRef, fresh)
+  return { portfolioId: newRef.id, ...fresh }
+}
+
+/**
+ * Fetch all portfolios owned by a user, ordered by creation date.
+ *
+ * @param {string} userId
+ * @returns {Promise<import('../data').Portfolio[]>}
+ */
+export async function getUserPortfolios(userId) {
+  const ref  = collection(db, 'portfolios')
+  const q    = query(ref, where('ownerId', '==', userId), orderBy('createdAt', 'asc'))
+  const snap = await getDocs(q)
+  return snap.docs.map(d => ({ portfolioId: d.id, ...d.data() }))
+}
+
+/**
+ * Create a new portfolio for a user.
+ *
+ * @param {string} userId
+ * @param {string} name         e.g. "Growth Portfolio"
+ * @param {number} startBalance defaults to START_BALANCE
+ * @returns {Promise<import('../data').Portfolio>}
+ */
+export async function createPortfolio(userId, name, startBalance = START_BALANCE) {
+  const fresh = {
+    ownerId:      userId,
+    name,
+    startBalance,
+    cash:         startBalance,
+    holdings:     {},
+    createdAt:    Timestamp.now(),
+  }
   const newRef = doc(collection(db, 'portfolios'))
   await setDoc(newRef, fresh)
   return { portfolioId: newRef.id, ...fresh }
