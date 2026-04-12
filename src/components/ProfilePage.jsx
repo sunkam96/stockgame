@@ -118,6 +118,7 @@ export default function ProfilePage() {
                     <th>Cash</th>
                     <th>Holdings</th>
                     <th>Created</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -127,6 +128,11 @@ export default function ProfilePage() {
                       <td>${p.cash.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       <td>{Object.keys(p.holdings ?? {}).length}</td>
                       <td className="muted">{p.createdAt?.toDate?.().toLocaleDateString() ?? '—'}</td>
+                      <td>
+                        <Link to="/" className="btn btn-primary" style={{ padding: '4px 12px', fontSize: '0.78rem' }}>
+                          View
+                        </Link>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
