@@ -34,7 +34,7 @@ const START_BALANCE = 10_000
  * @param {string} userId
  * @returns {Promise<import('../data').Portfolio>}
  */
-export async function getOrCreatePortfolio(userId) {
+export async function getOrCreatePortfolio(userId, email) {
   const ref  = collection(db, 'portfolios')
   const q    = query(ref, where('ownerId', '==', userId))
   const snap = await getDocs(q)
@@ -47,7 +47,7 @@ export async function getOrCreatePortfolio(userId) {
   // No portfolio yet — create a fresh one
   const fresh = {
     ownerId:      userId,
-    name:         'My Portfolio',
+    name:         email ?? 'My Portfolio',
     startBalance: START_BALANCE,
     cash:         START_BALANCE,
     holdings:     {},

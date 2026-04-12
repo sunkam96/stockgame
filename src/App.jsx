@@ -44,7 +44,7 @@ function Portfolio() {
     setLoadError(null)
 
     Promise.all([
-      getOrCreatePortfolio(user.uid),
+      getOrCreatePortfolio(user.uid, user.email),
       // transactions loaded after portfolio is known — handled below
     ])
       .then(async ([p]) => {
