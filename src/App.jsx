@@ -4,7 +4,7 @@ import { Timestamp } from 'firebase/firestore'
 import './App.css'
 import { auth } from './firebase'
 import { getOrCreatePortfolio, savePortfolio, getTransactions, addTransaction } from './api/firestore'
-import { fetchPrices } from './api/prices'
+import { fetchPrices, fetchPrice } from './api/prices'
 import { Routes, Route } from 'react-router-dom'
 import TradeModal from './components/TradeModal'
 import SignIn from './components/SignIn'
@@ -24,6 +24,7 @@ function Portfolio() {
   const [portfolio, setPortfolio]       = useState(null)
   const [transactions, setTransactions] = useState([])
   const [showModal, setShowModal]       = useState(false)
+  const [closingSymbol, setClosingSymbol] = useState(null) // symbol pending sell-to-close confirm
   const [livePrices, setLivePrices]     = useState({})
   const [loading, setLoading]           = useState(false)
   const [loadError, setLoadError]       = useState(null)
@@ -233,15 +234,31 @@ function Portfolio() {
                     <tr>
                       <th>Symbol</th><th>Shares</th><th>Avg Cost</th>
                       <th>Price</th><th>Mkt Value</th><th>Return</th><th>Return %</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
                     {holdingsList.map(h => {
-                      const livePrice = livePrices[h.symbol]
-                      const hasPrice  = livePrice !== undefined
-                      const pl  = hasPrice ? (livePrice - h.avgCost) * h.shares : 0
-                      const ret = hasPrice ? pct(livePrice, h.avgCost) : 0
-                      const up  = pl >= 0
+                      const livePrice   = livePrices[h.symbol]
+                      const hasPrice    = livePrice !== undefined
+                      const pl          = hasPrice ? (livePrice - h.avgCost) * h.shares : 0
+                      const ret         = hasPrice ? pct(livePrice, h.avgCost) : 0
+                      const up          = pl >= 0
+                      const isConfirming = closingSymbol === h.symbol
+
+                      async function handleSellToClose() {
+                        if (!isConfirming) { setClosingSymbol(h.symbol); return }
+                        setClosingSymbol(null)
+                        const price = livePrices[h.symbol] ?? await fetchPrice(h.symbol)
+                        await executeTrade({
+                          symbol:       h.symbol,
+                          companyName:  h.companyName,
+                          type:         'sell',
+                          shares:       h.shares,
+                          pricePerShare: price,
+                        })
+                      }
+
                       return (
                         <tr key={h.symbol}>
                           <td>
@@ -257,6 +274,21 @@ function Portfolio() {
                           </td>
                           <td className={hasPrice ? (up ? 'up' : 'down') : 'muted'}>
                             {hasPrice ? `${up ? '+' : ''}${fmt(ret)}%` : '—'}
+                          </td>
+                          <td>
+                            {isConfirming
+                              ? (
+                                <span style={{ display: 'inline-flex', gap: 6 }}>
+                                  <button className="btn btn-danger" style={{ padding: '4px 10px', fontSize: '0.78rem' }} onClick={handleSellToClose}>Confirm</button>
+                                  <button className="btn btn-ghost"  style={{ padding: '4px 10px', fontSize: '0.78rem' }} onClick={() => setClosingSymbol(null)}>Cancel</button>
+                                </span>
+                              )
+                              : (
+                                <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: '0.78rem' }} onClick={handleSellToClose}>
+                                  Sell to Close
+                                </button>
+                              )
+                            }
                           </td>
                         </tr>
                       )
