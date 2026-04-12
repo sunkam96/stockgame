@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { Timestamp } from 'firebase/firestore'
 import './App.css'
-import { MOCK_USER, MOCK_PORTFOLIO, MOCK_TRANSACTIONS } from './mockData'
-import TradeModal from './components/TradeModal'
+import { auth } from './firebase'
+import { getOrCreatePortfolio, savePortfolio, getTransactions, addTransaction } from './api/firestore'
 import { fetchPrices } from './api/prices'
+import TradeModal from './components/TradeModal'
+import SignIn from './components/SignIn'
 
 function fmt(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -13,121 +16,178 @@ function pct(current, avgCost) {
   return ((current - avgCost) / avgCost) * 100
 }
 
-let nextTxId = MOCK_TRANSACTIONS.length + 1
-
 export default function App() {
-  const [portfolio, setPortfolio]       = useState(MOCK_PORTFOLIO)
-  const [transactions, setTransactions] = useState(MOCK_TRANSACTIONS)
+  const [user, setUser]                 = useState(undefined) // undefined = checking, null = signed out
+  const [portfolio, setPortfolio]       = useState(null)
+  const [transactions, setTransactions] = useState([])
   const [showModal, setShowModal]       = useState(false)
-  const [livePrices, setLivePrices]     = useState({})   // symbol → number
+  const [livePrices, setLivePrices]     = useState({})
+  const [loading, setLoading]           = useState(false)
+  const [loadError, setLoadError]       = useState(null)
 
-  // ── Fetch live prices for all current holdings ─────────
+  // ── Auth state observer ────────────────────────────────────────────────────
   useEffect(() => {
+    const unsub = onAuthStateChanged(auth, firebaseUser => {
+      setUser(firebaseUser ?? null)
+    })
+    return unsub
+  }, [])
+
+  // ── Load portfolio + transactions when user is known ───────────────────────
+  useEffect(() => {
+    if (!user) return
+
+    setLoading(true)
+    setLoadError(null)
+
+    Promise.all([
+      getOrCreatePortfolio(user.uid),
+      // transactions loaded after portfolio is known — handled below
+    ])
+      .then(async ([p]) => {
+        const txs = await getTransactions(p.portfolioId)
+        setPortfolio(p)
+        setTransactions(txs)
+      })
+      .catch(e => setLoadError(e.message))
+      .finally(() => setLoading(false))
+  }, [user])
+
+  // ── Fetch live prices whenever holdings change ─────────────────────────────
+  useEffect(() => {
+    if (!portfolio) return
     const symbols = Object.keys(portfolio.holdings)
     if (symbols.length === 0) return
-
     fetchPrices(symbols).then(prices => {
       setLivePrices(prev => ({ ...prev, ...prices }))
     })
-  }, [portfolio.holdings])
+  }, [portfolio?.holdings])
 
-  // ── Derived totals ─────────────────────────────────────
-  const holdingsList = Object.values(portfolio.holdings)
+  // ── Derived totals ─────────────────────────────────────────────────────────
+  const holdingsList = portfolio ? Object.values(portfolio.holdings) : []
+  const mktValue     = holdingsList.reduce((s, h) => s + h.shares * (livePrices[h.symbol] ?? h.avgCost), 0)
+  const costBasis    = holdingsList.reduce((s, h) => s + h.shares * h.avgCost, 0)
+  const totalPL      = mktValue - costBasis
+  const totalValue   = mktValue + (portfolio?.cash ?? 0)
 
-  const mktValue = holdingsList.reduce((s, h) => {
-    const p = livePrices[h.symbol] ?? h.avgCost   // fall back to cost until price loads
-    return s + h.shares * p
-  }, 0)
-  const costBasis  = holdingsList.reduce((s, h) => s + h.shares * h.avgCost, 0)
-  const totalPL    = mktValue - costBasis
-  const totalValue = mktValue + portfolio.cash
-
-  // ── Trade execution ────────────────────────────────────
-  /**
-   * Validates and applies a trade. Returns an error string on failure,
-   * null on success.
-   *
-   * @param {{ symbol: string, companyName: string, type: 'buy'|'sell', shares: number, pricePerShare: number }} trade
-   * @returns {string|null}
-   */
-  function executeTrade({ symbol, companyName, type, shares, pricePerShare }) {
+  // ── Trade execution ────────────────────────────────────────────────────────
+  async function executeTrade({ symbol, companyName, type, shares, pricePerShare }) {
     const total = shares * pricePerShare
+    let updatedPortfolio
 
     if (type === 'buy') {
       if (total > portfolio.cash) {
         return `Not enough cash. Need $${fmt(total)}, have $${fmt(portfolio.cash)}.`
       }
+      const existing   = portfolio.holdings[symbol]
+      const newShares  = (existing?.shares ?? 0) + shares
+      const newAvgCost = existing
+        ? (existing.shares * existing.avgCost + total) / newShares
+        : pricePerShare
 
-      setPortfolio(prev => {
-        const existing  = prev.holdings[symbol]
-        const newShares  = (existing?.shares ?? 0) + shares
-        const newAvgCost = existing
-          ? (existing.shares * existing.avgCost + total) / newShares
-          : pricePerShare
-
-        return {
-          ...prev,
-          cash: prev.cash - total,
-          holdings: {
-            ...prev.holdings,
-            [symbol]: { symbol, companyName, shares: newShares, avgCost: newAvgCost },
-          },
-        }
-      })
-
-      // Seed the live price immediately so the table shows it right away
-      setLivePrices(prev => ({ ...prev, [symbol]: pricePerShare }))
+      updatedPortfolio = {
+        ...portfolio,
+        cash: portfolio.cash - total,
+        holdings: {
+          ...portfolio.holdings,
+          [symbol]: { symbol, companyName, shares: newShares, avgCost: newAvgCost },
+        },
+      }
     } else {
       const holding = portfolio.holdings[symbol]
       if (!holding || holding.shares < shares) {
         return `You only own ${holding?.shares ?? 0} share${holding?.shares === 1 ? '' : 's'} of ${symbol}.`
       }
+      const remaining   = holding.shares - shares
+      const newHoldings = { ...portfolio.holdings }
+      if (remaining === 0) delete newHoldings[symbol]
+      else newHoldings[symbol] = { ...holding, shares: remaining }
 
-      setPortfolio(prev => {
-        const remaining  = prev.holdings[symbol].shares - shares
-        const newHoldings = { ...prev.holdings }
-        if (remaining === 0) {
-          delete newHoldings[symbol]
-        } else {
-          newHoldings[symbol] = { ...prev.holdings[symbol], shares: remaining }
-        }
-        return { ...prev, cash: prev.cash + total, holdings: newHoldings }
-      })
+      updatedPortfolio = {
+        ...portfolio,
+        cash: portfolio.cash + total,
+        holdings: newHoldings,
+      }
     }
 
-    setTransactions(prev => [
-      {
-        transactionId: `tx_${String(nextTxId++).padStart(3, '0')}`,
-        portfolioId: portfolio.portfolioId,
-        type,
-        symbol,
-        companyName,
-        shares,
-        pricePerShare,
-        total,
-        executedAt: Timestamp.now(),
-      },
-      ...prev,
-    ])
+    const tx = {
+      portfolioId: portfolio.portfolioId,
+      type,
+      symbol,
+      companyName,
+      shares,
+      pricePerShare,
+      total,
+      executedAt: Timestamp.now(),
+    }
+
+    try {
+      const [, savedTx] = await Promise.all([
+        savePortfolio(portfolio.portfolioId, {
+          cash:     updatedPortfolio.cash,
+          holdings: updatedPortfolio.holdings,
+        }),
+        addTransaction(portfolio.portfolioId, tx),
+      ])
+      setPortfolio(updatedPortfolio)
+      setTransactions(prev => [savedTx, ...prev])
+      setLivePrices(prev => ({ ...prev, [symbol]: pricePerShare }))
+    } catch (e) {
+      return `Trade failed: ${e.message}`
+    }
 
     return null
   }
 
+  // ── Loading states ─────────────────────────────────────────────────────────
+
+  // Still checking Firebase auth
+  if (user === undefined) {
+    return (
+      <div className="app">
+        <header className="topbar"><span className="topbar-logo">📈 Stock Market Game</span></header>
+        <main className="main"><p className="empty">Loading…</p></main>
+      </div>
+    )
+  }
+
+  // Not signed in — show sign-in screen
+  if (user === null) return <SignIn />
+
+  // Signed in but portfolio still loading (or hasn't loaded yet)
+  if (loading || !portfolio) {
+    return (
+      <div className="app">
+        <header className="topbar"><span className="topbar-logo">📈 Stock Market Game</span></header>
+        <main className="main"><p className="empty">Loading portfolio…</p></main>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="app">
+        <header className="topbar"><span className="topbar-logo">📈 Stock Market Game</span></header>
+        <main className="main"><p className="trade-error">Failed to load: {loadError}</p></main>
+      </div>
+    )
+  }
+
+  // ── Main app ───────────────────────────────────────────────────────────────
   return (
     <div className="app">
 
-      {/* TOP NAV */}
       <header className="topbar">
         <span className="topbar-logo">📈 Stock Market Game</span>
         <div className="topbar-right">
-          <span className="topbar-user">{MOCK_USER.displayName}</span>
+          <span className="topbar-user">{user.displayName}</span>
           <span className="topbar-cash">💵 ${fmt(portfolio.cash)}</span>
+          <button className="btn-signout" onClick={() => signOut(auth)}>Sign out</button>
         </div>
       </header>
 
       <main className="main">
 
-        {/* PORTFOLIO HEADER */}
         <div className="portfolio-header">
           <div>
             <p className="portfolio-eyebrow">Portfolio</p>
@@ -138,7 +198,6 @@ export default function App() {
           </button>
         </div>
 
-        {/* STATS */}
         <div className="stat-row">
           <div className="stat">
             <div className="stat-k">Total Value</div>
@@ -160,7 +219,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* HOLDINGS */}
         <section className="panel">
           <div className="panel-label">Holdings</div>
           {holdingsList.length === 0
@@ -170,13 +228,8 @@ export default function App() {
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Symbol</th>
-                      <th>Shares</th>
-                      <th>Avg Cost</th>
-                      <th>Price</th>
-                      <th>Mkt Value</th>
-                      <th>Return</th>
-                      <th>Return %</th>
+                      <th>Symbol</th><th>Shares</th><th>Avg Cost</th>
+                      <th>Price</th><th>Mkt Value</th><th>Return</th><th>Return %</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -212,7 +265,6 @@ export default function App() {
           }
         </section>
 
-        {/* TRANSACTIONS */}
         <section className="panel">
           <div className="panel-label">Transaction History</div>
           {transactions.length === 0
@@ -222,12 +274,8 @@ export default function App() {
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Date</th>
-                      <th>Type</th>
-                      <th>Symbol</th>
-                      <th>Shares</th>
-                      <th>Price</th>
-                      <th>Total</th>
+                      <th>Date</th><th>Type</th><th>Symbol</th>
+                      <th>Shares</th><th>Price</th><th>Total</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -253,7 +301,6 @@ export default function App() {
 
       </main>
 
-      {/* TRADE MODAL */}
       {showModal && (
         <TradeModal
           cash={portfolio.cash}
