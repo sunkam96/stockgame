@@ -151,13 +151,30 @@ export async function savePortfolio(portfolioId, { cash, holdings }) {
 }
 
 /**
- * Fetch every portfolio document — used by the admin page.
+ * Fetch every portfolio document joined with the owner's profile email.
+ * Used by the admin page.
  *
- * @returns {Promise<import('../data').Portfolio[]>}
+ * @returns {Promise<(import('../data').Portfolio & { email: string|null, displayName: string|null })[]>}
  */
 export async function getAllPortfolios() {
-  const snap = await getDocs(collection(db, 'portfolios'))
-  return snap.docs.map(d => ({ portfolioId: d.id, ...d.data() }))
+  const [portfolioSnap, profileSnap] = await Promise.all([
+    getDocs(collection(db, 'portfolios')),
+    getDocs(collection(db, 'users')),
+  ])
+
+  // Build a uid → profile map for fast lookup
+  const profileMap = {}
+  profileSnap.docs.forEach(d => { profileMap[d.id] = d.data() })
+
+  return portfolioSnap.docs.map(d => {
+    const portfolio = { portfolioId: d.id, ...d.data() }
+    const profile   = profileMap[portfolio.ownerId] ?? {}
+    return {
+      ...portfolio,
+      email:       profile.email       ?? null,
+      displayName: profile.displayName ?? null,
+    }
+  })
 }
 
 // ── Transactions ─────────────────────────────────────────────────────────────

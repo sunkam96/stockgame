@@ -47,9 +47,8 @@ export default function Admin() {
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>Portfolio ID</th>
-                        <th>Owner UID</th>
-                        <th>Name</th>
+                        <th>Portfolio</th>
+                        <th>Owner</th>
                         <th>Email</th>
                         <th>Cash</th>
                         <th>Holdings</th>
@@ -60,9 +59,8 @@ export default function Admin() {
                     <tbody>
                       {portfolios.map(p => (
                         <tr key={p.portfolioId}>
-                          <td><code style={{ fontSize: '0.75rem' }}>{p.portfolioId}</code></td>
-                          <td><code style={{ fontSize: '0.75rem' }}>{p.ownerId}</code></td>
                           <td>{p.name}</td>
+                          <td>{p.displayName ?? '—'}</td>
                           <td className="muted">{p.email ?? '—'}</td>
                           <td>${fmt(p.cash)}</td>
                           <td>{Object.keys(p.holdings ?? {}).length} stock{Object.keys(p.holdings ?? {}).length !== 1 ? 's' : ''}</td>
