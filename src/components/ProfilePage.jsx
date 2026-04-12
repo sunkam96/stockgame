@@ -2,20 +2,127 @@ import { useState, useEffect } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import { Link, useNavigate } from 'react-router-dom'
 import { auth } from '../firebase'
-import { getProfile, getOrCreateProfile, getUserPortfolios, createPortfolio } from '../api/firestore'
+import { getProfile, getOrCreateProfile, getUserPortfolios, createPortfolio, START_BALANCE } from '../api/firestore'
 import GoogleIcon from './GoogleIcon'
 
 function fmt(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+/** Derive the recommended next portfolio name given an existing list. */
+function nextPortfolioName(portfolios) {
+  if (portfolios.length === 0) return 'Portfolio 1'
+
+  // Find highest trailing number among names like "Portfolio N"
+  let max = 0
+  portfolios.forEach(p => {
+    const m = p.name?.match(/^Portfolio\s+(\d+)$/i)
+    if (m) max = Math.max(max, parseInt(m[1], 10))
+  })
+
+  return max > 0
+    ? `Portfolio ${max + 1}`
+    : `Portfolio ${portfolios.length + 1}`
+}
+
+// ── Create Portfolio Modal ────────────────────────────────────────────────────
+
+function CreatePortfolioModal({ onClose, onConfirm, defaultName, creating }) {
+  const [name, setName]           = useState(defaultName)
+  const [balance, setBalance]     = useState(String(START_BALANCE))
+  const [balanceErr, setBalanceErr] = useState(null)
+
+  function handleBalanceChange(e) {
+    const val = e.target.value
+    setBalance(val)
+    const n = parseFloat(val)
+    if (isNaN(n) || n < 100) setBalanceErr('Minimum starting balance is $100')
+    else setBalanceErr(null)
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    const n = parseFloat(balance)
+    if (!name.trim() || isNaN(n) || n < 100) return
+    onConfirm(name.trim(), n)
+  }
+
+  return (
+    <div
+      className="modal-backdrop"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="modal">
+        <div className="modal-header">
+          <h2 className="modal-title">New Portfolio</h2>
+          <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label className="modal-field-label">Portfolio name</label>
+            <input
+              className="input"
+              style={{ width: '100%' }}
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. Portfolio 1"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="modal-field-label">Starting balance</label>
+            <div style={{ position: 'relative' }}>
+              <span style={{
+                position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                color: 'var(--muted)', fontWeight: 600, pointerEvents: 'none'
+              }}>$</span>
+              <input
+                className="input"
+                style={{ width: '100%', paddingLeft: 22 }}
+                type="number"
+                min="100"
+                step="100"
+                value={balance}
+                onChange={handleBalanceChange}
+              />
+            </div>
+            {balanceErr
+              ? <p style={{ color: 'var(--down)', fontSize: '0.78rem', marginTop: 4 }}>{balanceErr}</p>
+              : <p className="muted" style={{ fontSize: '0.78rem', marginTop: 4 }}>
+                  Recommended: ${fmt(START_BALANCE)}
+                </p>
+            }
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+            <button type="button" className="btn" onClick={onClose} disabled={creating}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={creating || !name.trim() || !!balanceErr || parseFloat(balance) < 100}
+            >
+              {creating ? 'Creating…' : 'Create Portfolio'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── ProfilePage ───────────────────────────────────────────────────────────────
+
 export default function ProfilePage() {
   const [user, setUser]               = useState(undefined)
   const [profile, setProfile]         = useState(undefined)  // undefined=loading, null=not found
   const [portfolios, setPortfolios]   = useState([])
   const [creating, setCreating]       = useState(false)
+  const [showModal, setShowModal]     = useState(false)
   const [creatingPortfolio, setCreatingPortfolio] = useState(false)
-  const [portfolioName, setPortfolioName]         = useState('')
   const [error, setError]             = useState(null)
   const navigate                      = useNavigate()
 
@@ -54,15 +161,14 @@ export default function ProfilePage() {
     }
   }
 
-  async function handleCreatePortfolio(e) {
-    e.preventDefault()
-    if (!user || !portfolioName.trim()) return
+  async function handleCreatePortfolio(name, startBalance) {
+    if (!user) return
     setCreatingPortfolio(true)
     setError(null)
     try {
-      const p = await createPortfolio(user.uid, portfolioName.trim())
+      const p = await createPortfolio(user.uid, name, startBalance)
       setPortfolios(prev => [...prev, p])
-      setPortfolioName('')
+      setShowModal(false)
       navigate(`/portfolio/${p.portfolioId}`)
     } catch (err) {
       setError(err.message)
@@ -164,23 +270,12 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {/* Create portfolio form */}
-          <form onSubmit={handleCreatePortfolio} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              className="input"
-              style={{ flex: 1 }}
-              placeholder="Portfolio name, e.g. Growth, Dividends…"
-              value={portfolioName}
-              onChange={e => setPortfolioName(e.target.value)}
-            />
-            <button
-              className="btn btn-primary"
-              type="submit"
-              disabled={creatingPortfolio || !portfolioName.trim()}
-            >
-              {creatingPortfolio ? 'Creating…' : '+ New Portfolio'}
-            </button>
-          </form>
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowModal(true)}
+          >
+            + New Portfolio
+          </button>
         </div>
 
       </div>
@@ -206,6 +301,15 @@ export default function ProfilePage() {
         </div>
         {body()}
       </main>
+
+      {showModal && (
+        <CreatePortfolioModal
+          defaultName={nextPortfolioName(portfolios)}
+          onClose={() => setShowModal(false)}
+          onConfirm={handleCreatePortfolio}
+          creating={creatingPortfolio}
+        />
+      )}
     </div>
   )
 }

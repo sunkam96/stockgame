@@ -265,10 +265,20 @@ body {
   justify-content: space-between;
 }
 
-.modal-header h2 {
+.modal-header h2, .modal-title {
   font-size: 1.1rem;
   font-weight: 800;
   letter-spacing: -0.3px;
+}
+
+.modal-field-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
 }
 
 .modal-close {
