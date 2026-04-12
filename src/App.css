@@ -527,6 +527,12 @@ body {
 }
 
 /* ── Sign-out button in topbar ─────────────────────────── */
+.topbar-user {
+  text-decoration: none;
+  color: inherit;
+}
+.topbar-user:hover { text-decoration: underline; }
+
 .btn-signout {
   background: transparent;
   border: 1px solid var(--border);

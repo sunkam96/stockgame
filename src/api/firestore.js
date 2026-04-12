@@ -26,7 +26,7 @@ import { db } from '../firebase'
 export const START_BALANCE      = 10_000
 export const MAX_SHORT_EXPOSURE = START_BALANCE * 2   // $20,000
 
-// ── Profile ───────────────────────────────────────────────────────────────────
+// ── Profile ──────────────────────────────────────────────────────────────────
 
 /**
  * Load the profile for a user. If none exists, create one from their
@@ -36,6 +36,18 @@ export const MAX_SHORT_EXPOSURE = START_BALANCE * 2   // $20,000
  * @param {{ email: string, displayName: string }} authData
  * @returns {Promise<import('../data').Profile>}
  */
+/**
+ * Read a profile without creating one. Returns null if it doesn't exist.
+ *
+ * @param {string} userId
+ * @returns {Promise<import('../data').Profile | null>}
+ */
+export async function getProfile(userId) {
+  const snap = await getDoc(doc(db, 'users', userId))
+  if (!snap.exists()) return null
+  return { userId: snap.id, ...snap.data() }
+}
+
 export async function getOrCreateProfile(userId, { email, displayName }) {
   const ref  = doc(db, 'users', userId)
   const snap = await getDoc(ref)

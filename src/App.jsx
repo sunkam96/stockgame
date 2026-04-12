@@ -5,10 +5,11 @@ import './App.css'
 import { auth } from './firebase'
 import { getOrCreatePortfolio, savePortfolio, getTransactions, addTransaction } from './api/firestore'
 import { fetchPrices, fetchPrice } from './api/prices'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Link } from 'react-router-dom'
 import TradeModal from './components/TradeModal'
 import SignIn from './components/SignIn'
 import Admin from './components/Admin'
+import ProfilePage from './components/ProfilePage'
 
 function fmt(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -184,7 +185,7 @@ function Portfolio() {
       <header className="topbar">
         <span className="topbar-logo">📈 Stock Market Game</span>
         <div className="topbar-right">
-          <span className="topbar-user">{user.displayName}</span>
+          <Link to="/profile" className="topbar-user">{user.displayName}</Link>
           <span className="topbar-cash">💵 ${fmt(portfolio.cash)}</span>
           <button className="btn-signout" onClick={() => signOut(auth)}>Sign out</button>
         </div>
@@ -352,8 +353,9 @@ function Portfolio() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/admin" element={<Admin />} />
-      <Route path="/*"     element={<Portfolio />} />
+      <Route path="/admin"   element={<Admin />} />
+      <Route path="/profile" element={<ProfilePage />} />
+      <Route path="/*"       element={<Portfolio />} />
     </Routes>
   )
 }
