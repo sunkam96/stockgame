@@ -5,8 +5,10 @@ import './App.css'
 import { auth } from './firebase'
 import { getOrCreatePortfolio, savePortfolio, getTransactions, addTransaction } from './api/firestore'
 import { fetchPrices } from './api/prices'
+import { Routes, Route } from 'react-router-dom'
 import TradeModal from './components/TradeModal'
 import SignIn from './components/SignIn'
+import Admin from './components/Admin'
 
 function fmt(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -16,7 +18,8 @@ function pct(current, avgCost) {
   return ((current - avgCost) / avgCost) * 100
 }
 
-export default function App() {
+function Portfolio() {
+
   const [user, setUser]                 = useState(undefined) // undefined = checking, null = signed out
   const [portfolio, setPortfolio]       = useState(null)
   const [transactions, setTransactions] = useState([])
@@ -311,5 +314,14 @@ export default function App() {
       )}
 
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/admin" element={<Admin />} />
+      <Route path="/*"     element={<Portfolio />} />
+    </Routes>
   )
 }

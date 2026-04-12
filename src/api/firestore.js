@@ -69,6 +69,16 @@ export async function savePortfolio(portfolioId, { cash, holdings }) {
   await updateDoc(doc(db, 'portfolios', portfolioId), { cash, holdings })
 }
 
+/**
+ * Fetch every portfolio document — used by the admin page.
+ *
+ * @returns {Promise<import('../data').Portfolio[]>}
+ */
+export async function getAllPortfolios() {
+  const snap = await getDocs(collection(db, 'portfolios'))
+  return snap.docs.map(d => ({ portfolioId: d.id, ...d.data() }))
+}
+
 // ── Transactions ─────────────────────────────────────────────────────────────
 
 /**
