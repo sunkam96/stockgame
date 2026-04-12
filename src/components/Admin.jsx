@@ -50,6 +50,7 @@ export default function Admin() {
                         <th>Portfolio ID</th>
                         <th>Owner UID</th>
                         <th>Name</th>
+                        <th>Email</th>
                         <th>Cash</th>
                         <th>Holdings</th>
                         <th>Start Balance</th>
@@ -62,6 +63,7 @@ export default function Admin() {
                           <td><code style={{ fontSize: '0.75rem' }}>{p.portfolioId}</code></td>
                           <td><code style={{ fontSize: '0.75rem' }}>{p.ownerId}</code></td>
                           <td>{p.name}</td>
+                          <td className="muted">{p.email ?? '—'}</td>
                           <td>${fmt(p.cash)}</td>
                           <td>{Object.keys(p.holdings ?? {}).length} stock{Object.keys(p.holdings ?? {}).length !== 1 ? 's' : ''}</td>
                           <td>${fmt(p.startBalance)}</td>
