@@ -62,9 +62,9 @@ export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
     !priceLoading &&
     (type === 'buy' ? total <= cash : sharesNum <= maxSellShares)
 
-  function handleConfirm() {
+  async function handleConfirm() {
     if (!canSubmit || !selected || !price) return
-    const err = onConfirm({
+    const err = await onConfirm({
       symbol: selected.symbol,
       companyName: selected.companyName,
       type,
