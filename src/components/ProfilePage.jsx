@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { auth } from '../firebase'
 import { getProfile, getOrCreateProfile, getUserPortfolios, createPortfolio, START_BALANCE } from '../api/firestore'
 import GoogleIcon from './GoogleIcon'
+import SignIn from './SignIn'
 
 function fmt(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -127,7 +128,10 @@ export default function ProfilePage() {
   const navigate                      = useNavigate()
 
   useEffect(() => {
-    return onAuthStateChanged(auth, u => setUser(u ?? null))
+    return onAuthStateChanged(auth, u => {
+      setUser(u ?? null)
+      if (!u) setProfile(null)
+    })
   }, [])
 
   useEffect(() => {
@@ -185,7 +189,7 @@ export default function ProfilePage() {
     }
 
     if (user === null) {
-      return <p className="empty">You need to be signed in to view your profile.</p>
+      return <SignIn />
     }
 
     if (error) {
