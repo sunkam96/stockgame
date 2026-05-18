@@ -11,6 +11,7 @@ import SignIn from './components/SignIn'
 import Admin from './components/Admin'
 import ProfilePage from './components/ProfilePage'
 import Docs from './components/Docs'
+import PortfolioChart from './components/PortfolioChart'
 
 function fmt(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -260,6 +261,11 @@ function Portfolio() {
             </div>
           </div>
         </div>
+
+        <section className="panel">
+          <div className="panel-label">Portfolio Value Over Time</div>
+          <PortfolioChart transactions={transactions} startBalance={portfolio.startBalance} />
+        </section>
 
         <section className="panel">
           <div className="panel-label">Holdings</div>
