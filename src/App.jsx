@@ -10,6 +10,7 @@ import TradeModal from './components/TradeModal'
 import SignIn from './components/SignIn'
 import Admin from './components/Admin'
 import ProfilePage from './components/ProfilePage'
+import Docs from './components/Docs'
 
 function fmt(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -390,6 +391,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/admin"                    element={<Admin />} />
+      <Route path="/docs"                     element={<Docs />} />
       <Route path="/portfolio/:portfolioId"   element={<Portfolio />} />
       <Route path="/*"                        element={<ProfilePage />} />
     </Routes>
