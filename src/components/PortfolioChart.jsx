@@ -22,9 +22,9 @@ function fmtDate(date) {
 
 /**
  * Replay transactions to build a time-series of portfolio value.
- * Value at each point = cash + Σ(shares × last known price for that symbol).
+ * Historical points use transaction prices; the final "now" point uses live prices.
  */
-function buildSeries(transactions, startBalance) {
+function buildSeries(transactions, startBalance, livePrices, currentCash) {
   if (!transactions || transactions.length === 0) return []
 
   const sorted = [...transactions].sort(
@@ -35,9 +35,9 @@ function buildSeries(transactions, startBalance) {
   const holdings  = {}  // symbol → shares
   const lastPrice = {}  // symbol → last seen pricePerShare
 
-  const portfolioValue = () =>
+  const portfolioValue = (priceMap) =>
     cash + Object.entries(holdings).reduce(
-      (sum, [sym, shares]) => sum + shares * (lastPrice[sym] ?? 0), 0
+      (sum, [sym, shares]) => sum + shares * (priceMap[sym] ?? lastPrice[sym] ?? 0), 0
     )
 
   const points = [{ date: fmtDate(sorted[0].executedAt.toDate()), value: startBalance }]
@@ -56,7 +56,21 @@ function buildSeries(transactions, startBalance) {
       if (Math.abs(holdings[symbol]) < 1e-9) delete holdings[symbol]
     }
 
-    points.push({ date: fmtDate(tx.executedAt.toDate()), value: portfolioValue() })
+    points.push({ date: fmtDate(tx.executedAt.toDate()), value: portfolioValue({}) })
+  }
+
+  // Append a live "now" point using real market prices for current holdings.
+  // Only add it if live prices are available and today isn't already the last point.
+  const hasLivePrices = livePrices && Object.keys(livePrices).length > 0
+  if (hasLivePrices) {
+    const nowLabel   = fmtDate(new Date())
+    const liveValue  = currentCash + Object.entries(holdings).reduce(
+      (sum, [sym, shares]) => sum + shares * (livePrices[sym] ?? lastPrice[sym] ?? 0), 0
+    )
+    const last = points[points.length - 1]
+    if (last.date !== nowLabel || Math.abs(last.value - liveValue) > 0.01) {
+      points.push({ date: nowLabel, value: liveValue, isLive: true })
+    }
   }
 
   return points
@@ -82,10 +96,10 @@ function CustomTooltip({ active, payload, label }) {
   )
 }
 
-export default function PortfolioChart({ transactions, startBalance }) {
+export default function PortfolioChart({ transactions, startBalance, livePrices, cash }) {
   const data = useMemo(
-    () => buildSeries(transactions, startBalance),
-    [transactions, startBalance]
+    () => buildSeries(transactions, startBalance, livePrices, cash),
+    [transactions, startBalance, livePrices, cash]
   )
 
   if (data.length < 2) {

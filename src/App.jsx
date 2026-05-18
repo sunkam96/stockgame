@@ -264,7 +264,7 @@ function Portfolio() {
 
         <section className="panel">
           <div className="panel-label">Portfolio Value Over Time</div>
-          <PortfolioChart transactions={transactions} startBalance={portfolio.startBalance} />
+          <PortfolioChart transactions={transactions} startBalance={portfolio.startBalance} livePrices={livePrices} cash={portfolio.cash} />
         </section>
 
         <section className="panel">
