@@ -6,32 +6,32 @@ function fmt(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-/**
- * @param {{
- *   onClose: () => void
- *   onConfirm: (trade: { symbol: string, companyName: string, type: 'buy'|'sell', shares: number, pricePerShare: number }) => string|null
- *   cash: number
- *   holdings: Record<string, import('../data').Holding>
- * }} props
- */
 const IS_DEV = import.meta.env.DEV
 
 function localDatetimeValue(date) {
-  // Returns a string like "2024-01-15T09:30" suitable for <input type="datetime-local">
   const pad = n => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+/**
+ * @param {{
+ *   onClose: () => void
+ *   onConfirm: (trade: { symbol: string, companyName: string, type: 'buy'|'sell', shares: number, pricePerShare: number, executedAt?: Date }) => string|null
+ *   cash: number
+ *   holdings: Record<string, import('../data').Holding>
+ * }} props
+ */
 export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
-  const [type, setType]         = useState('buy')
-  const [symbol, setSymbol]     = useState('')
-  const [search, setSearch]     = useState('')
-  const [shares, setShares]     = useState('')
-  const [error, setError]       = useState(null)
-  const [price, setPrice]       = useState(null)
-  const [priceLoading, setPriceLoading] = useState(false)
-  const [priceError, setPriceError]     = useState(null)
-  const [overrideTime, setOverrideTime] = useState(IS_DEV ? localDatetimeValue(new Date()) : null)
+  const [type, setType]           = useState('buy')
+  const [symbol, setSymbol]       = useState('')
+  const [search, setSearch]       = useState('')
+  const [shares, setShares]       = useState('')
+  const [error, setError]         = useState(null)
+  const [price, setPrice]         = useState(null)      // fetched market price
+  const [priceLoading, setPriceLoading]   = useState(false)
+  const [priceError, setPriceError]       = useState(null)
+  const [overrideTime, setOverrideTime]   = useState(IS_DEV ? localDatetimeValue(new Date()) : null)
+  const [priceOverride, setPriceOverride] = useState('')  // dev-only manual price
 
   const filtered = useMemo(() =>
     DJIA_30.filter(s =>
@@ -41,14 +41,15 @@ export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
 
   const selected = DJIA_30.find(s => s.symbol === symbol) ?? null
 
-  // Fetch price whenever a stock is selected
+  // Fetch market price whenever a stock is selected; reset price override too
   useEffect(() => {
-    if (!selected) { setPrice(null); return }
+    if (!selected) { setPrice(null); setPriceOverride(''); return }
 
     let cancelled = false
     setPriceLoading(true)
     setPriceError(null)
     setPrice(null)
+    setPriceOverride('')
 
     fetchPrice(selected.symbol)
       .then(p => { if (!cancelled) { setPrice(p); setPriceLoading(false) } })
@@ -57,9 +58,15 @@ export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
     return () => { cancelled = true }
   }, [selected?.symbol])
 
+  // The price actually used for all calculations — override wins if set and valid
+  const overrideNum   = parseFloat(priceOverride)
+  const effectivePrice = IS_DEV && !isNaN(overrideNum) && overrideNum > 0
+    ? overrideNum
+    : price
+
   const sharesNum   = parseInt(shares, 10)
   const validShares = !isNaN(sharesNum) && sharesNum > 0
-  const total       = validShares && price ? sharesNum * price : 0
+  const total       = validShares && effectivePrice ? sharesNum * effectivePrice : 0
 
   const maxSellShares = symbol && holdings[symbol] ? holdings[symbol].shares : 0
   const cashAfter     = type === 'buy' ? cash - total : cash + total
@@ -67,24 +74,26 @@ export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
   const canSubmit =
     selected &&
     validShares &&
-    price !== null &&
+    effectivePrice !== null &&
     !priceLoading &&
     (type === 'buy' ? total <= cash : sharesNum <= maxSellShares)
 
   async function handleConfirm() {
-    if (!canSubmit || !selected || !price) return
+    if (!canSubmit || !selected || !effectivePrice) return
     const executedAt = IS_DEV && overrideTime ? new Date(overrideTime) : null
     const err = await onConfirm({
-      symbol: selected.symbol,
-      companyName: selected.companyName,
+      symbol:        selected.symbol,
+      companyName:   selected.companyName,
       type,
-      shares: sharesNum,
-      pricePerShare: price,
+      shares:        sharesNum,
+      pricePerShare: effectivePrice,
       ...(executedAt ? { executedAt } : {}),
     })
     if (err) { setError(err); return }
     onClose()
   }
+
+  const isPriceOverridden = IS_DEV && !isNaN(overrideNum) && overrideNum > 0
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -161,9 +170,18 @@ export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
             <div className="summary-row">
               <span>Price per share</span>
               <span>
-                {priceLoading && <span className="muted">Loading…</span>}
-                {priceError  && <span className="down">Error</span>}
-                {price !== null && `$${fmt(price)}`}
+                {priceLoading && !isPriceOverridden && <span className="muted">Loading…</span>}
+                {priceError && !isPriceOverridden && <span className="down">Error</span>}
+                {effectivePrice !== null && (
+                  <>
+                    ${fmt(effectivePrice)}
+                    {isPriceOverridden && price !== null && (
+                      <span className="muted" style={{ fontSize: '0.75rem', marginLeft: 6 }}>
+                        (market: ${fmt(price)})
+                      </span>
+                    )}
+                  </>
+                )}
               </span>
             </div>
             <div className="summary-row">
@@ -177,23 +195,47 @@ export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
           </div>
         )}
 
-        {priceError && (
+        {priceError && !isPriceOverridden && (
           <p className="trade-error">Could not fetch price: {priceError}</p>
         )}
         {error && <p className="trade-error">{error}</p>}
 
+        {/* DEV OVERRIDES */}
         {IS_DEV && (
-          <div className="field" style={{ borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
-            <label className="field-label" style={{ color: 'var(--muted)' }}>
-              🛠 Dev: override order time
-            </label>
-            <input
-              className="input"
-              type="datetime-local"
-              value={overrideTime ?? ''}
-              max={localDatetimeValue(new Date())}
-              onChange={e => setOverrideTime(e.target.value || null)}
-            />
+          <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label className="field-label" style={{ color: 'var(--muted)' }}>
+                🛠 Dev: override price per share
+              </label>
+              <div style={{ position: 'relative' }}>
+                <span style={{
+                  position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                  color: 'var(--muted)', fontWeight: 600, pointerEvents: 'none'
+                }}>$</span>
+                <input
+                  className="input"
+                  style={{ paddingLeft: 22 }}
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  placeholder={price ? fmt(price) : 'e.g. 182.50'}
+                  value={priceOverride}
+                  onChange={e => setPriceOverride(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label className="field-label" style={{ color: 'var(--muted)' }}>
+                🛠 Dev: override order time
+              </label>
+              <input
+                className="input"
+                type="datetime-local"
+                value={overrideTime ?? ''}
+                max={localDatetimeValue(new Date())}
+                onChange={e => setOverrideTime(e.target.value || null)}
+              />
+            </div>
           </div>
         )}
 
