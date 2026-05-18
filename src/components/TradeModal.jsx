@@ -14,6 +14,14 @@ function fmt(n) {
  *   holdings: Record<string, import('../data').Holding>
  * }} props
  */
+const IS_DEV = import.meta.env.DEV
+
+function localDatetimeValue(date) {
+  // Returns a string like "2024-01-15T09:30" suitable for <input type="datetime-local">
+  const pad = n => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
   const [type, setType]         = useState('buy')
   const [symbol, setSymbol]     = useState('')
@@ -23,6 +31,7 @@ export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
   const [price, setPrice]       = useState(null)
   const [priceLoading, setPriceLoading] = useState(false)
   const [priceError, setPriceError]     = useState(null)
+  const [overrideTime, setOverrideTime] = useState(IS_DEV ? localDatetimeValue(new Date()) : null)
 
   const filtered = useMemo(() =>
     DJIA_30.filter(s =>
@@ -64,12 +73,14 @@ export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
 
   async function handleConfirm() {
     if (!canSubmit || !selected || !price) return
+    const executedAt = IS_DEV && overrideTime ? new Date(overrideTime) : null
     const err = await onConfirm({
       symbol: selected.symbol,
       companyName: selected.companyName,
       type,
       shares: sharesNum,
       pricePerShare: price,
+      ...(executedAt ? { executedAt } : {}),
     })
     if (err) { setError(err); return }
     onClose()
@@ -170,6 +181,21 @@ export default function TradeModal({ onClose, onConfirm, cash, holdings }) {
           <p className="trade-error">Could not fetch price: {priceError}</p>
         )}
         {error && <p className="trade-error">{error}</p>}
+
+        {IS_DEV && (
+          <div className="field" style={{ borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
+            <label className="field-label" style={{ color: 'var(--muted)' }}>
+              🛠 Dev: override order time
+            </label>
+            <input
+              className="input"
+              type="datetime-local"
+              value={overrideTime ?? ''}
+              max={localDatetimeValue(new Date())}
+              onChange={e => setOverrideTime(e.target.value || null)}
+            />
+          </div>
+        )}
 
         <div className="modal-actions">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>

@@ -90,7 +90,7 @@ function Portfolio() {
   const totalValue   = mktValue + (portfolio?.cash ?? 0)
 
   // ── Trade execution ────────────────────────────────────────────────────────
-  async function executeTrade({ symbol, companyName, type, shares, pricePerShare }) {
+  async function executeTrade({ symbol, companyName, type, shares, pricePerShare, executedAt }) {
     const total = shares * pricePerShare
     let updatedPortfolio
 
@@ -137,7 +137,7 @@ function Portfolio() {
       shares,
       pricePerShare,
       total,
-      executedAt: Timestamp.now(),
+      executedAt: executedAt ? Timestamp.fromDate(executedAt) : Timestamp.now(),
     }
 
     try {
